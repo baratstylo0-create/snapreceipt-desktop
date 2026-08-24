@@ -1,0 +1,44 @@
+{
+  "name": "snapreceipt-desktop",
+  "version": "1.0.0",
+  "description": "SnapReceipt AI desktop app — thin Electron wrapper around the live web app.",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "icon": "node build-icon.js",
+    "build:win": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3",
+    "png-to-ico": "^2.1.8"
+  },
+  "build": {
+    "appId": "com.snapreceiptai.desktop",
+    "productName": "SnapReceipt AI",
+    "asar": true,
+    "files": [
+      "main.js",
+      "package.json"
+    ],
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "SnapReceipt-Setup.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "SnapReceipt AI"
+    }
+  }
+}
