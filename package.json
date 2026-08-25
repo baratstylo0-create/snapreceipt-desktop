@@ -7,7 +7,8 @@
   "scripts": {
     "start": "electron .",
     "icon": "node build-icon.js",
-    "build:win": "electron-builder --win"
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac"
   },
   "devDependencies": {
     "electron": "^31.7.7",
@@ -39,6 +40,18 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "SnapReceipt AI"
+    },
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["universal"] }
+      ],
+      "icon": "build/icon.png",
+      "artifactName": "SnapReceipt-Mac.dmg",
+      "category": "public.app-category.productivity",
+      "identity": null
+    },
+    "dmg": {
+      "title": "SnapReceipt AI"
     }
   }
 }

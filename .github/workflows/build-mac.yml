@@ -1,0 +1,26 @@
+name: Build macOS app
+
+# Manual trigger only. This repo's Windows build was done locally (no CI needed there),
+# but nobody on the team has a real Mac — GitHub's free macos-latest runner builds it
+# instead. Unsigned (no Apple Developer Program yet — see package.json's mac.identity:
+# null): the .dmg installs fine but macOS Gatekeeper will warn the user once; they get
+# past it via System Settings > Privacy & Security > "Open Anyway". Re-run this workflow
+# any time main.js/package.json/the icon change and a fresh Mac build is needed.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm ci
+      - run: npm run build:mac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: snapreceipt-mac-dmg
+          path: dist/SnapReceipt-Mac.dmg
+          if-no-files-found: error
