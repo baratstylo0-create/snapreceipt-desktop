@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "SnapReceipt AI desktop app — thin Electron wrapper around the live web app.",
   "main": "main.js",
+  "author": "SnapReceipt AI",
   "private": true,
   "scripts": {
     "start": "electron .",
@@ -19,6 +20,7 @@
     "appId": "com.snapreceiptai.desktop",
     "productName": "SnapReceipt AI",
     "asar": true,
+    "publish": null,
     "files": [
       "main.js",
       "package.json"
