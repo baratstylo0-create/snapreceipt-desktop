@@ -10,14 +10,20 @@
 // Security: the loaded page is untrusted remote content (a real website), so it gets
 // NO node access (contextIsolation on, nodeIntegration off, sandbox on) — same posture
 // a normal browser tab has. Nothing here changes if the web app's own code changes.
-const { app, BrowserWindow, shell, Menu } = require('electron');
+const { app, BrowserWindow, shell, Menu, safeStorage, dialog } = require('electron');
+const fs = require('node:fs');
 const path = require('path');
+const { beginDesktopGoogleSignIn } = require('./desktop-auth');
 
 const APP_URL = 'https://snapreceiptai.friction.com.my/';
-// OAuth (Google Sign-In) redirects through accounts.google.com before bouncing back to
-// APP_URL — these origins are allowed to navigate IN the app window. Anything else opens
-// in the user's real browser instead of turning this wrapper into a general browser.
-const ALLOWED_NAV_HOSTS = ['snapreceiptai.friction.com.my', 'accounts.google.com'];
+// Public installed-app identifier (not a secret). It must be set to the Google Cloud
+// Console's separate "Desktop app" client before a release build. Release packaging
+// generates build-config.js from the CI/build environment; a runtime override exists only
+// for controlled QA. A missing file is safe for development: Google sign-in stays disabled.
+let packagedGoogleDesktopClientId = '';
+try { packagedGoogleDesktopClientId = require('./build-config').GOOGLE_DESKTOP_CLIENT_ID || ''; } catch (e) { /* no release config in source */ }
+const GOOGLE_DESKTOP_CLIENT_ID = process.env.GOOGLE_DESKTOP_CLIENT_ID || packagedGoogleDesktopClientId;
+const ALLOWED_NAV_HOSTS = ['snapreceiptai.friction.com.my'];
 
 function isAllowedHost(urlString) {
   try {
@@ -29,6 +35,107 @@ function isAllowedHost(urlString) {
 }
 
 let mainWindow = null;
+let googleSignInInProgress = false;
+let restoredEncryptedSession = false;
+
+function isAppUrl(urlString) {
+  try {
+    const url = new URL(urlString);
+    return url.protocol === 'https:' && url.hostname === 'snapreceiptai.friction.com.my';
+  } catch (e) {
+    return false;
+  }
+}
+
+function isGoogleStartUrl(urlString) {
+  try {
+    const url = new URL(urlString);
+    return isAppUrl(urlString) && url.pathname === '/api/auth/google';
+  } catch (e) {
+    return false;
+  }
+}
+
+function sessionFile() {
+  return path.join(app.getPath('userData'), 'snapreceipt-session.bin');
+}
+
+function saveEncryptedSession(session) {
+  // Desktop sign-in never writes the bearer to Chromium's persistent localStorage.
+  // On Windows/macOS, Electron safeStorage encrypts it with the OS credential service.
+  if (!safeStorage.isEncryptionAvailable()) return false;
+  const raw = JSON.stringify({ token: session.token, role: session.role, name: session.name || '' });
+  fs.writeFileSync(sessionFile(), safeStorage.encryptString(raw), { mode: 0o600 });
+  return true;
+}
+
+function loadEncryptedSession() {
+  try {
+    if (!safeStorage.isEncryptionAvailable() || !fs.existsSync(sessionFile())) return null;
+    const parsed = JSON.parse(safeStorage.decryptString(fs.readFileSync(sessionFile())));
+    return parsed && typeof parsed.token === 'string' && parsed.token ? parsed : null;
+  } catch (e) {
+    // An unreadable old keychain item must not brick the app. Remove only this local,
+    // encrypted cache and make the user sign in again; never report its contents.
+    try { fs.unlinkSync(sessionFile()); } catch (ignore) { /* ignore */ }
+    return null;
+  }
+}
+
+async function injectSessionIntoCurrentPage(session) {
+  if (!mainWindow || !isAppUrl(mainWindow.webContents.getURL())) return false;
+  // Values are JSON-encoded into a constant script; no user-controlled text becomes code.
+  // sessionStorage is intentionally short-lived. A later app launch restores it only from
+  // the OS-encrypted safeStorage cache above.
+  const token = JSON.stringify(session.token);
+  const sessionInfo = JSON.stringify(JSON.stringify({ role: session.role || 'owner', branch_id: null, display_name: session.name || '' }));
+  await mainWindow.webContents.executeJavaScript(
+    'sessionStorage.setItem("dashboard_token", ' + token + ');'
+      + 'sessionStorage.setItem("session_info", ' + sessionInfo + ');'
+      + 'window.location.replace(' + JSON.stringify(APP_URL) + ');',
+    true,
+  );
+  return true;
+}
+
+async function restoreEncryptedSession() {
+  if (restoredEncryptedSession) return;
+  restoredEncryptedSession = true;
+  const session = loadEncryptedSession();
+  if (!session) return;
+  try { await injectSessionIntoCurrentPage(session); } catch (e) { /* login gate remains available */ }
+}
+
+async function startGoogleSignIn() {
+  if (googleSignInInProgress || !mainWindow) return;
+  googleSignInInProgress = true;
+  try {
+    const session = await beginDesktopGoogleSignIn({
+      clientId: GOOGLE_DESKTOP_CLIENT_ID,
+      appUrl: APP_URL,
+      openExternal: shell.openExternal,
+    });
+    saveEncryptedSession(session);
+    await injectSessionIntoCurrentPage(session);
+    if (session.is_new && session.bind_token) {
+      await dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'Account created',
+        message: 'Your SnapReceipt account is ready.',
+        detail: 'Connect Telegram from Settings when the dashboard opens.',
+      });
+    }
+  } catch (e) {
+    await dialog.showMessageBox(mainWindow, {
+      type: 'error',
+      title: 'Google sign-in could not finish',
+      message: 'Return to SnapReceipt and try again.',
+      detail: String(e && e.message ? e.message : 'Unexpected sign-in error'),
+    });
+  } finally {
+    googleSignInInProgress = false;
+  }
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -50,9 +157,15 @@ function createWindow() {
 
   mainWindow.loadURL(APP_URL);
 
-  // Keep OAuth + the app itself navigating in-window; send everything else (support
-  // links, "Privacy Policy" footer, etc.) to the user's default browser.
+  // Google is an installed-app OAuth flow, never an embedded Electron flow. Catch the
+  // existing web button before its first request; the main process opens the system browser
+  // with PKCE + loopback instead. Other external links remain in the system browser.
   mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (isGoogleStartUrl(url)) {
+      event.preventDefault();
+      void startGoogleSignIn();
+      return;
+    }
     if (!isAllowedHost(url)) {
       event.preventDefault();
       shell.openExternal(url);
@@ -62,6 +175,10 @@ function createWindow() {
   // window.open()/target=_blank: same-origin opens in this window, anything else goes
   // to the system browser. Never spawns an unrestricted Electron child window.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (isGoogleStartUrl(url)) {
+      void startGoogleSignIn();
+      return { action: 'deny' };
+    }
     if (isAllowedHost(url)) {
       mainWindow.loadURL(url);
     } else {
@@ -69,6 +186,8 @@ function createWindow() {
     }
     return { action: 'deny' };
   });
+
+  mainWindow.webContents.on('did-finish-load', () => { void restoreEncryptedSession(); });
 
   mainWindow.on('closed', () => { mainWindow = null; });
 }

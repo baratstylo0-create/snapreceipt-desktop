@@ -7,9 +7,10 @@
   "private": true,
   "scripts": {
     "start": "electron .",
+    "test": "node --test",
     "icon": "node build-icon.js",
-    "build:win": "electron-builder --win",
-    "build:mac": "electron-builder --mac"
+    "build:win": "node prepare-build-config.js && electron-builder --win",
+    "build:mac": "node prepare-build-config.js && electron-builder --mac"
   },
   "devDependencies": {
     "electron": "^31.7.7",
@@ -23,6 +24,8 @@
     "publish": null,
     "files": [
       "main.js",
+      "desktop-auth.js",
+      "build-config.js",
       "package.json"
     ],
     "directories": {
