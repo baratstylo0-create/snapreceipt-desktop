@@ -42,7 +42,7 @@ function buildAuthorizeUrl({ clientId, redirectUri, state, challenge }) {
 }
 
 function callbackPage(message, isError) {
-  const safe = String(message).replace(/[<&>]/g, (char) => ({ '<': '&lt;', '&': '&gt;', '>': '&gt;' }[char]));
+  const safe = String(message).replace(/[<&>]/g, (char) => ({ '<': '&lt;', '&': '&amp;', '>': '&gt;' }[char]));
   return '<!doctype html><meta charset="utf-8"><title>SnapReceipt AI</title>'
     + '<body style="font-family:system-ui;max-width:34rem;margin:4rem auto;padding:1rem">'
     + '<h1>' + (isError ? 'Sign-in could not finish' : 'Sign-in complete') + '</h1>'
@@ -147,7 +147,13 @@ async function beginDesktopGoogleSignIn({ clientId, appUrl, openExternal, fetchI
   const loopback = waitForLoopbackCallback({ expectedState: state, timeoutMs });
   const { redirectUri } = await loopback.ready;
   const authorizeUrl = buildAuthorizeUrl({ clientId, redirectUri, state, challenge });
-  const opened = await openExternal(authorizeUrl);
+  let opened;
+  try {
+    opened = await openExternal(authorizeUrl);
+  } catch (error) {
+    loopback.cancel();
+    throw new Error('Could not open your default browser for Google sign-in');
+  }
   if (opened === false) {
     loopback.cancel();
     throw new Error('Could not open your default browser for Google sign-in');
@@ -160,6 +166,7 @@ async function beginDesktopGoogleSignIn({ clientId, appUrl, openExternal, fetchI
 module.exports = {
   GOOGLE_AUTHORIZE_URL,
   GOOGLE_TOKEN_URL,
+  callbackPage,
   base64url,
   createPkce,
   buildAuthorizeUrl,

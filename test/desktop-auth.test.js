@@ -5,6 +5,7 @@ const http = require('node:http');
 const test = require('node:test');
 const {
   buildAuthorizeUrl,
+  callbackPage,
   createPkce,
   waitForLoopbackCallback,
   exchangeCode,
@@ -63,4 +64,10 @@ test('token exchanges never use a client secret and pass the ID token only in a 
   assert.doesNotMatch(calls[0].options.body, /secret/i);
   assert.equal(calls[1].url, 'https://snapreceiptai.friction.com.my/api/auth/google/native');
   assert.equal(calls[1].options.body, '{"id_token":"google-id-token"}');
+});
+
+test('loopback callback HTML escapes message text', () => {
+  const body = callbackPage('<script>&</script>', true);
+  assert.doesNotMatch(body, /<script>/i);
+  assert.match(body, /&lt;script&gt;&amp;&lt;\/script&gt;/);
 });

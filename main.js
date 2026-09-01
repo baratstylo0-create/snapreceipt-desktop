@@ -15,6 +15,7 @@ const fs = require('node:fs');
 const path = require('path');
 const { beginDesktopGoogleSignIn } = require('./desktop-auth');
 
+const { isAllowedAppUrl, isGoogleStartUrl, isSafeExternalUrl } = require('./navigation-policy');
 const APP_URL = 'https://snapreceiptai.friction.com.my/';
 // Public installed-app identifier (not a secret). It must be set to the Google Cloud
 // Console's separate "Desktop app" client before a release build. Release packaging
@@ -23,38 +24,9 @@ const APP_URL = 'https://snapreceiptai.friction.com.my/';
 let packagedGoogleDesktopClientId = '';
 try { packagedGoogleDesktopClientId = require('./build-config').GOOGLE_DESKTOP_CLIENT_ID || ''; } catch (e) { /* no release config in source */ }
 const GOOGLE_DESKTOP_CLIENT_ID = process.env.GOOGLE_DESKTOP_CLIENT_ID || packagedGoogleDesktopClientId;
-const ALLOWED_NAV_HOSTS = ['snapreceiptai.friction.com.my'];
-
-function isAllowedHost(urlString) {
-  try {
-    const host = new URL(urlString).hostname;
-    return ALLOWED_NAV_HOSTS.some((h) => host === h || host.endsWith('.' + h));
-  } catch (e) {
-    return false;
-  }
-}
-
 let mainWindow = null;
 let googleSignInInProgress = false;
 let restoredEncryptedSession = false;
-
-function isAppUrl(urlString) {
-  try {
-    const url = new URL(urlString);
-    return url.protocol === 'https:' && url.hostname === 'snapreceiptai.friction.com.my';
-  } catch (e) {
-    return false;
-  }
-}
-
-function isGoogleStartUrl(urlString) {
-  try {
-    const url = new URL(urlString);
-    return isAppUrl(urlString) && url.pathname === '/api/auth/google';
-  } catch (e) {
-    return false;
-  }
-}
 
 function sessionFile() {
   return path.join(app.getPath('userData'), 'snapreceipt-session.bin');
@@ -83,7 +55,7 @@ function loadEncryptedSession() {
 }
 
 async function injectSessionIntoCurrentPage(session) {
-  if (!mainWindow || !isAppUrl(mainWindow.webContents.getURL())) return false;
+  if (!mainWindow || !isAllowedAppUrl(mainWindow.webContents.getURL())) return false;
   // Values are JSON-encoded into a constant script; no user-controlled text becomes code.
   // sessionStorage is intentionally short-lived. A later app launch restores it only from
   // the OS-encrypted safeStorage cache above.
@@ -151,26 +123,38 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      spellcheck: true
+      spellcheck: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      devTools: !app.isPackaged,
     }
   });
 
   mainWindow.loadURL(APP_URL);
 
-  // Google is an installed-app OAuth flow, never an embedded Electron flow. Catch the
-  // existing web button before its first request; the main process opens the system browser
-  // with PKCE + loopback instead. Other external links remain in the system browser.
-  mainWindow.webContents.on('will-navigate', (event, url) => {
+  const handleNavigation = (event, url) => {
     if (isGoogleStartUrl(url)) {
       event.preventDefault();
       void startGoogleSignIn();
       return;
     }
-    if (!isAllowedHost(url)) {
+    if (!isAllowedAppUrl(url)) {
       event.preventDefault();
-      shell.openExternal(url);
+      if (isSafeExternalUrl(url)) void shell.openExternal(url);
     }
-  });
+  };
+
+  // Google is an installed-app OAuth flow, never an embedded Electron flow. Catch the
+  // existing web button before its first request; the main process opens the system browser
+  // with PKCE + loopback instead. Other external links remain in the system browser.
+  mainWindow.webContents.on('will-navigate', handleNavigation);
+  // Redirects have their own Electron event. Enforcing the same policy here prevents
+  // a compromised page or redirect endpoint from escaping the app-origin boundary.
+  mainWindow.webContents.on('will-redirect', handleNavigation);
+
+  // The wrapper has no need to embed arbitrary webviews. Denying them prevents remote
+  // content from creating a second renderer with a different security configuration.
+  mainWindow.webContents.on('will-attach-webview', (event) => event.preventDefault());
 
   // window.open()/target=_blank: same-origin opens in this window, anything else goes
   // to the system browser. Never spawns an unrestricted Electron child window.
@@ -179,10 +163,10 @@ function createWindow() {
       void startGoogleSignIn();
       return { action: 'deny' };
     }
-    if (isAllowedHost(url)) {
+    if (isAllowedAppUrl(url)) {
       mainWindow.loadURL(url);
-    } else {
-      shell.openExternal(url);
+    } else if (isSafeExternalUrl(url)) {
+      void shell.openExternal(url);
     }
     return { action: 'deny' };
   });
