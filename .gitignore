@@ -2,3 +2,6 @@ node_modules/
 dist/
 electron-test.log
 build-config.js
+store-build-config.json
+build/appx/
+.electron-builder-store-toolset/

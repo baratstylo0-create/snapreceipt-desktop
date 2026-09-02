@@ -13,6 +13,9 @@
     "build:win:qa": "node prepare-build-config.js && electron-builder --win -c.forceCodeSigning=false -c.win.signExecutable=false",
     "build:win:release": "node prepare-build-config.js && node scripts/assert-windows-signing-env.js && electron-builder --win -c.forceCodeSigning=true && powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"& '.\\scripts\\verify-windows-release.ps1'\"",
     "verify:windows-release": "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"& '.\\scripts\\verify-windows-release.ps1'\"",
+    "prepare:win:store": "node prepare-build-config.js && node scripts/prepare-store-build-config.js",
+    "build:win:store:qa": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \".\\scripts\\build-windows-store.ps1\" -Qa",
+    "build:win:store": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \".\\scripts\\build-windows-store.ps1\"",
     "build:mac": "npm run build:mac:release",
     "build:mac:qa": "node prepare-build-config.js && electron-builder --mac -c.forceCodeSigning=false -c.mac.identity=null -c.mac.notarize=false",
     "build:mac:release": "node prepare-build-config.js && node scripts/assert-mac-signing-env.js && electron-builder --mac -c.forceCodeSigning=true && bash scripts/verify-macos-release.sh"

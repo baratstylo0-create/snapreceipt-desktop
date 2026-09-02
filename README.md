@@ -49,6 +49,29 @@ new publishers, so signing reduces risk but cannot guarantee zero warnings.
 See the canonical runbook in SnapReceipt AI:
 `docs/ops/2026-08-29-windows-code-signing.md`.
 
+## Microsoft Store / MSIX route
+
+For a no-certificate direct-download alternative, submit an AppX package through the
+Microsoft Store. Microsoft signs the package for Store distribution; a locally generated
+`.appx` must not be published directly because it is not trusted by Windows users.
+
+Partner Center must first provide the exact package identity values. The build refuses to
+invent or default them:
+
+```powershell
+$env:GOOGLE_DESKTOP_CLIENT_ID = 'your-desktop-client-id.apps.googleusercontent.com'
+$env:WINDOWS_STORE_IDENTITY_NAME = 'partner-center-identity'
+$env:WINDOWS_STORE_PUBLISHER = 'CN=partner-center-publisher'
+$env:WINDOWS_STORE_PUBLISHER_DISPLAY_NAME = 'SnapReceipt AI'
+$env:WINDOWS_STORE_APPLICATION_ID = 'SnapReceiptAI'
+npm run build:win:store:qa
+```
+
+`build:win:store:qa` creates and validates a local Store-shaped package. After the
+Partner Center listing is accepted, use `npm run build:win:store` for the submission
+artifact and upload it to Partner Center. The public download page must stay disabled
+until the Store listing is live and its official link replaces the placeholder.
+
 ## macOS signing and notarization
 
 The macOS release command also fails closed. It requires a Developer ID application
