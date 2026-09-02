@@ -7,14 +7,21 @@
   "private": true,
   "scripts": {
     "start": "electron .",
+    "test": "node --test",
     "icon": "node build-icon.js",
-    "build:win": "electron-builder --win",
+    "build:win": "npm run build:win:release",
+    "build:win:qa": "electron-builder --win -c.forceCodeSigning=false -c.win.signExecutable=false",
+    "build:win:release": "node scripts/assert-windows-signing-env.js && electron-builder --win -c.forceCodeSigning=true && powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"& '.\\scripts\\verify-windows-release.ps1'\"",
+    "verify:windows-release": "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"& '.\\scripts\\verify-windows-release.ps1'\"",
+    "prepare:win:store": "node scripts/prepare-store-build-config.js",
+    "build:win:store:qa": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \".\\scripts\\build-windows-store.ps1\" -Qa",
+    "build:win:store": "powershell.exe -NoProfile -ExecutionPolicy Bypass -File \".\\scripts\\build-windows-store.ps1\"",
     "build:mac": "electron-builder --mac"
   },
   "devDependencies": {
-    "electron": "^31.7.7",
-    "electron-builder": "^24.13.3",
-    "png-to-ico": "^2.1.8"
+    "electron": "44.1.1",
+    "electron-builder": "26.15.3",
+    "png-to-ico": "3.0.2"
   },
   "build": {
     "appId": "com.snapreceiptai.desktop",
@@ -36,7 +43,15 @@
         { "target": "nsis", "arch": ["x64"] }
       ],
       "icon": "build/icon.ico",
-      "artifactName": "SnapReceipt-Setup.exe"
+      "artifactName": "SnapReceipt-Setup.exe",
+      "signAndEditExecutable": true,
+      "signExecutable": true,
+      "signtoolOptions": {
+        "signingHashAlgorithms": [
+          "sha256"
+        ],
+        "rfc3161TimeStampServer": "https://timestamp.digicert.com"
+      }
     },
     "nsis": {
       "oneClick": false,
