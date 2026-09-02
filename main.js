@@ -57,10 +57,10 @@ async function handleGoogleSignIn() {
     const result = await signInWithGoogle();
     const params = new URLSearchParams({ gauth_token: result.token, gauth_role: result.role, gauth_name: result.name });
     if (result.isNew) { params.set('gauth_new', '1'); params.set('gauth_bind', result.bindToken || ''); }
-    mainWindow.loadURL(APP_URL + '#' + params.toString());
+    mainWindow.loadURL(APP_URL + '?desktop=1#' + params.toString());
   } catch (e) {
     const params = new URLSearchParams({ gauth_error: (e && e.code) || 'failed' });
-    mainWindow.loadURL(APP_URL + '#' + params.toString());
+    mainWindow.loadURL(APP_URL + '?desktop=1#' + params.toString());
   }
 }
 
@@ -84,7 +84,7 @@ function createWindow() {
     }
   });
 
-  mainWindow.loadURL(APP_URL);
+  mainWindow.loadURL(APP_URL + '?desktop=1');
 
   // Google Sign-In is intercepted here — BEFORE the server's redirect ever sends this window
   // toward accounts.google.com — and run in the system browser instead (see google-auth.js's
