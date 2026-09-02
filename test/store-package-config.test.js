@@ -8,6 +8,13 @@ const repoRoot = path.resolve(__dirname, '..');
 const script = path.join(repoRoot, 'scripts', 'prepare-store-build-config.js');
 const generatedConfig = path.join(repoRoot, 'store-build-config.json');
 
+test('Electron package includes every runtime module imported by main', () => {
+  const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
+  assert.ok(packageJson.build.files.includes('main.js'));
+  assert.ok(packageJson.build.files.includes('desktop-auth.js'));
+  assert.ok(packageJson.build.files.includes('navigation-policy.js'));
+});
+
 test('Store package preparation refuses missing Partner Center identity metadata', () => {
   const result = spawnSync(process.execPath, [script], {
     cwd: repoRoot,

@@ -33,6 +33,7 @@
     "files": [
       "main.js",
       "desktop-auth.js",
+      "navigation-policy.js",
       "build-config.js",
       "package.json"
     ],
