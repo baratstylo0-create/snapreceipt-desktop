@@ -23,6 +23,8 @@
     "publish": null,
     "files": [
       "main.js",
+      "config.js",
+      "google-auth.js",
       "package.json"
     ],
     "directories": {

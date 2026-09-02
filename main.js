@@ -12,12 +12,20 @@
 // a normal browser tab has. Nothing here changes if the web app's own code changes.
 const { app, BrowserWindow, shell, Menu } = require('electron');
 const path = require('path');
+const { APP_URL } = require('./config');
+const { signInWithGoogle } = require('./google-auth');
 
-const APP_URL = 'https://snapreceiptai.friction.com.my/';
-// OAuth (Google Sign-In) redirects through accounts.google.com before bouncing back to
-// APP_URL — these origins are allowed to navigate IN the app window. Anything else opens
-// in the user's real browser instead of turning this wrapper into a general browser.
-const ALLOWED_NAV_HOSTS = ['snapreceiptai.friction.com.my', 'accounts.google.com'];
+// Only the app's own origin is allowed to navigate IN the app window. Google Sign-In used to
+// be on this list too (accounts.google.com), so the OAuth redirect would navigate in-window —
+// exactly the broken flow docs/specs/2026-08-29-desktop-google-oauth-loopback.md (snapreceipt-
+// ai repo) diagnoses: this window's cookie store has never signed into Google, so that screen
+// showed a raw manual "Email or phone" form instead of the account chooser, and Google can
+// outright refuse the whole flow as an untrusted embedded browser. Google Sign-In is now
+// intercepted below (isGoogleAuthStartUrl) BEFORE it ever leaves for accounts.google.com, and
+// runs in the user's real system browser instead (google-auth.js) — so accounts.google.com no
+// longer needs (or gets) an in-window navigation allowance. Anything else not on this list
+// opens in the user's real browser instead of turning this wrapper into a general browser.
+const ALLOWED_NAV_HOSTS = ['snapreceiptai.friction.com.my'];
 
 function isAllowedHost(urlString) {
   try {
@@ -25,6 +33,34 @@ function isAllowedHost(urlString) {
     return ALLOWED_NAV_HOSTS.some((h) => host === h || host.endsWith('.' + h));
   } catch (e) {
     return false;
+  }
+}
+
+// isGoogleAuthStartUrl(url) -> true only for THIS app's own /api/auth/google start endpoint
+// (what public/js/app.js's onGoogleLogin navigates to via `location.href`) — never for
+// accounts.google.com itself, which this app should never navigate to in-window at all.
+function isGoogleAuthStartUrl(urlString) {
+  try {
+    const u = new URL(urlString);
+    return u.hostname === new URL(APP_URL).hostname && u.pathname === '/api/auth/google';
+  } catch (e) {
+    return false;
+  }
+}
+
+// Runs the system-browser loopback flow, then hands the result to the loaded page as a URL
+// fragment — the SAME #gauth_token=...|#gauth_error=<code> contract the web/Android Google
+// flows already use (see snapreceipt-ai's public/js/app.js boot()), so the page's own session
+// handling picks this up with zero changes on that side.
+async function handleGoogleSignIn() {
+  try {
+    const result = await signInWithGoogle();
+    const params = new URLSearchParams({ gauth_token: result.token, gauth_role: result.role, gauth_name: result.name });
+    if (result.isNew) { params.set('gauth_new', '1'); params.set('gauth_bind', result.bindToken || ''); }
+    mainWindow.loadURL(APP_URL + '#' + params.toString());
+  } catch (e) {
+    const params = new URLSearchParams({ gauth_error: (e && e.code) || 'failed' });
+    mainWindow.loadURL(APP_URL + '#' + params.toString());
   }
 }
 
@@ -50,19 +86,29 @@ function createWindow() {
 
   mainWindow.loadURL(APP_URL);
 
-  // Keep OAuth + the app itself navigating in-window; send everything else (support
-  // links, "Privacy Policy" footer, etc.) to the user's default browser.
+  // Google Sign-In is intercepted here — BEFORE the server's redirect ever sends this window
+  // toward accounts.google.com — and run in the system browser instead (see google-auth.js's
+  // header comment for why). The app itself keeps navigating in-window; everything else
+  // (support links, "Privacy Policy" footer, etc.) goes to the user's default browser.
   mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (isGoogleAuthStartUrl(url)) {
+      event.preventDefault();
+      handleGoogleSignIn();
+      return;
+    }
     if (!isAllowedHost(url)) {
       event.preventDefault();
       shell.openExternal(url);
     }
   });
 
-  // window.open()/target=_blank: same-origin opens in this window, anything else goes
-  // to the system browser. Never spawns an unrestricted Electron child window.
+  // window.open()/target=_blank: same-origin opens in this window, Google Sign-In takes the
+  // same system-browser detour as the will-navigate handler above, anything else goes to the
+  // system browser. Never spawns an unrestricted Electron child window.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (isAllowedHost(url)) {
+    if (isGoogleAuthStartUrl(url)) {
+      handleGoogleSignIn();
+    } else if (isAllowedHost(url)) {
       mainWindow.loadURL(url);
     } else {
       shell.openExternal(url);
