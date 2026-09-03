@@ -18,7 +18,7 @@
 const crypto = require('crypto');
 const http = require('http');
 const { shell } = require('electron');
-const { GOOGLE_DESKTOP_CLIENT_ID } = require('./config');
+const { GOOGLE_DESKTOP_CLIENT_ID, GOOGLE_DESKTOP_CLIENT_SECRET } = require('./config');
 
 const AUTH_ENDPOINT = 'https://accounts.google.com/o/oauth2/v2/auth';
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
@@ -116,6 +116,7 @@ async function exchangeCode({ code, verifier, redirectUri }) {
   const body = new URLSearchParams({
     code,
     client_id: GOOGLE_DESKTOP_CLIENT_ID,
+    client_secret: GOOGLE_DESKTOP_CLIENT_SECRET,
     redirect_uri: redirectUri,
     grant_type: 'authorization_code',
     code_verifier: verifier,
