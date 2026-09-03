@@ -25,6 +25,7 @@
       "main.js",
       "config.js",
       "google-auth.js",
+      ".env",
       "package.json"
     ],
     "directories": {
